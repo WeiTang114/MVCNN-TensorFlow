@@ -151,9 +151,12 @@ def train(dataset, ckptfile='', caffemodel=''):
                             (datetime.now(), step, val_loss, acc*100.)
 
                     # validation summary
-                    val_summ = sess.run(validation_summary, validation_acc_summary, 
-                            feed_dict={validation_loss: val_loss, validation_acc: acc})
-                    summary_writer.add_summary(val_summ, step)
+                    val_loss_summ = sess.run(validation_summary,
+                            feed_dict={validation_loss: val_loss})
+                    val_acc_summ = sess.run(validation_acc_summary, 
+                            feed_dict={validation_acc: acc})
+                    summary_writer.add_summary(val_loss_summ, step)
+                    summary_writer.add_summary(val_acc_summ, step)
                     summary_writer.flush()
 
 
