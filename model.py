@@ -144,7 +144,7 @@ def inference_multiview(views):
         lrn1 = None
         pool1 = _maxpool('pool1'+p, conv1, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='VALID')
 
-        conv2 = _conv('conv2'+p, pool1, [11, 11, 96, 256])
+        conv2 = _conv('conv2'+p, pool1, [5, 5, 96, 256])
         lrn2 = None
         pool2 = _maxpool('pool2'+p, conv2, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='VALID')
         
@@ -172,6 +172,39 @@ def inference_multiview(views):
     fc8 = _fc('fc8', fc7, 40)
 
     return fc8 
+    
+
+def load_alexnet_to_mvcnn(sess, caffetf_modelpath):
+    """ caffemodel: np.array, """
+    V = FLAGS.n_views
+
+    def load(name, layer_data, group=1):
+        w, b = layer_data
+
+        if group != 1:
+            w = np.concatenate((w, w), axis=2) 
+
+        with tf.variable_scope(name, reuse=True):
+            for subkey, data in zip(('weights', 'biases'), (w, b)):
+                print 'loading ', name, subkey
+                var = tf.get_variable(subkey)
+                sess.run(var.assign(data))
+
+    caffemodel = np.load(caffetf_modelpath)
+    data_dict = caffemodel.item()
+    for v in xrange(V):
+        for l in ['conv1', 'conv2', 'conv3', 'conv4', 'conv5']:
+            name = l + '_view%d' % v
+
+            # historical grouping by alexnet
+            if l == 'conv2' or l == 'conv4' or l == 'conv5':
+                load(name, data_dict[l], group=2)
+            else:
+                load(name, data_dict[l])
+
+    
+    for l in ['fc6', 'fc7']:
+        load(l, data_dict[l])
     
 
 def _view_pool(view_features, name):

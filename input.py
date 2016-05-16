@@ -79,8 +79,16 @@ class Dataset:
 
     def validation_batches(self, batch_size):
         assert self.splitted, 'Not splitted to train/val!'
-        for x,y in self._batches_fast(listfiles_val, batch_size):
+        for x,y in self._batches_fast(self.listfiles_val, batch_size):
             yield x,y
+
+    def validation_batches_random(self, batch_size, n):
+        assert self.splitted, 'Not splitted to train/val!'
+        
+        listfiles = random.sample(self.listfiles_val, n)
+        for x,y in self._batches_fast(listfiles, batch_size):
+            yield x,y
+
 
     def _batches(self, listfiles, batch_size):
         n = len(listfiles)
