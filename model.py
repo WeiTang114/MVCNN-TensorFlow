@@ -1,6 +1,7 @@
 #coding=utf-8
 import tensorflow as tf
 import re
+import numpy as np
 
 
 FLAGS = tf.app.flags.FLAGS
@@ -89,7 +90,8 @@ def _conv(name, in_, ksize, strides=[1,1,1,1], padding=DEFAULT_PADDING):
     n_kern = ksize[3]
 
     with tf.variable_scope(name, reuse=False) as scope:
-        kernel = _variable_with_weight_decay('weights', shape=ksize, stddev=2.5e-4, wd=0.0)
+        stddev = 1 / np.prod(ksize[:3], dtype=float) ** 0.5
+        kernel = _variable_with_weight_decay('weights', shape=ksize, stddev=stddev, wd=0.0)
         conv = tf.nn.conv2d(in_, kernel, strides, padding=padding)
         biases = _variable_on_cpu('biases', [n_kern], tf.constant_initializer(0.0))
         bias = tf.nn.bias_add(conv, biases)
@@ -110,9 +112,10 @@ def _fc(name, in_, outsize):
     with tf.variable_scope(name, reuse=False) as scope:
         # Move everything into depth so we can perform a single matrix multiply.
         
-        insize = in_.get_shape()[-1]
+        insize = in_.get_shape().as_list()[-1]
+        stddev = 1 / float(insize) ** 0.5
         weights = _variable_with_weight_decay('weights', shape=[insize, outsize],
-                                              stddev=4.3e-4, wd=0.004)
+                                              stddev=stddev, wd=0.004)
         biases = _variable_on_cpu('biases', [outsize], tf.constant_initializer(0.0))
         fc = tf.nn.relu(tf.matmul(in_, weights) + biases, name=scope.name)
         _activation_summary(fc)
