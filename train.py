@@ -57,8 +57,8 @@ def train(dataset, ckptfile=''):
         global_step = tf.Variable(startstep, trainable=False)
          
         
-        view_ = tf.placeholder('float32', shape=(batch_size, V, 227, 227, 3), name='im0')
-        y_ = tf.placeholder('int64', shape=(batch_size), name='y')
+        view_ = tf.placeholder('float32', shape=(None, V, 227, 227, 3), name='im0')
+        y_ = tf.placeholder('int64', shape=(None), name='y')
 
         fc8 = model.inference_multiview(view_)
         loss = model.loss(fc8, y_)
@@ -127,8 +127,9 @@ def train(dataset, ckptfile=''):
                 n_val = val_x.shape[0]
                 val_losses = []
                 predictions = np.array([])
-                for val_step in xrange(n_val/FLAGS.batch_size):
-                    val_batch_x, val_batch_y = fetch_batch(val_x, val_y, val_step, FLAGS.batch_size)
+                
+                for val_step, (val_batch_x, val_batch_y) in \
+                        enumerate(dataset.validation_batches(batch_size)):
                     val_feed_dict = {im_: val_batch_x,
                                      y_  : val_batch_y}
                     val_loss, pred = sess.run([loss, prediction], feed_dict=val_feed_dict)
@@ -167,7 +168,7 @@ def main(argv):
     print 'start loading data'
 
     listfiles = read_lists()
-    dataset = Dataset(listfiles, subtract_mean=True, V=12)
+    dataset = Dataset(listfiles, subtract_mean=False, V=12)
 
     print 'done loading data, time=', time.time() - st
 

@@ -2,6 +2,7 @@ import cv2
 import random
 import numpy as np
 import time
+import multiprocessing as mp
 
 W = H = 256
 
@@ -72,13 +73,13 @@ class Dataset:
             self.splitted = True 
 
     def batches(self, batch_size):
-        for x,y in self._batches(self.listfiles, batch_size):
+        for x,y in self._batches_fast(self.listfiles, batch_size):
             yield x,y
         
 
-    def validation_batch(self, batch_size):
+    def validation_batches(self, batch_size):
         assert self.splitted, 'Not splitted to train/val!'
-        for x,y in self._batches(listfiles_val, batch_size):
+        for x,y in self._batches_fast(listfiles_val, batch_size):
             yield x,y
 
     def _batches(self, listfiles, batch_size):
@@ -101,6 +102,53 @@ class Dataset:
             print 'load batch time:', time.time()-starttime, 'sec'
             yield x, y
     
+    def _load_shape(self, listfile):
+        s = Shape(listfile)
+        s.crop_center()
+        if self.subtract_mean:
+            s.subtract_mean()
+        return s 
+
+    def _batches_fast(self, listfiles, batch_size):
+        subtract_mean = self.subtract_mean
+        n = len(listfiles)
+
+        def load(listfiles, q):                    
+            for l in listfiles:
+                q.put(self._load_shape(l))
+
+            # indicate that I'm done
+            q.put(None)
+            q.close()
+
+        q = mp.Queue(maxsize=128)
+
+        # background loading Shapes process
+        p = mp.Process(target=load, args=(listfiles, q))
+        p.start()
+
+
+        x = np.zeros((batch_size, self.V, 227, 227, 3)) 
+        y = np.zeros(batch_size)
+
+        for i in xrange(0, n, batch_size):
+            starttime = time.time()
+            
+            # print 'q size', q.qsize() 
+
+            for j in xrange(batch_size):
+                s = q.get()
+
+                # queue is done
+                if s == None: 
+                    break
+                
+                x[j, ...] = s.views
+                y[j] = s.label 
+            
+            # print 'load batch time:', time.time()-starttime, 'sec'
+            yield x, y
+
     def size(self):
         """ size of listfiles (if splitted, only count 'train', not 'val')"""
         return len(self.listfiles)
