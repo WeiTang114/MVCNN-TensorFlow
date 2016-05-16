@@ -1,4 +1,7 @@
 import cv2
+import random
+import numpy as np
+import time
 
 W = H = 256
 
@@ -9,16 +12,17 @@ class Shape:
             self.V = int(f.readline())
             view_files = [l.strip() for l in f.readlines()]
         
-        self.views = _load_views(self.view_files, self.V)
+        self.views = self._load_views(view_files, self.V)
         self.done_mean = False
         
 
-    def _load_views(view_files, V):
+    def _load_views(self, view_files, V):
         views = []
         for f in view_files:
             im = cv2.imread(f)
-            im = cv2.resize((W, H))
-            im = cv2.cvtColor(cv2.COLOR_GRAY2BGR) #BGR!!
+            im = cv2.resize(im, (W, H))
+            # im = cv2.cvtColor(im, cv2.COLOR_GRAY2BGR) #BGR!!
+            assert im.shape == (W,H,3), 'BGR!'
             im = im.astype('float32')
             views.append(im)
         views = np.asarray(views)
@@ -39,7 +43,7 @@ class Shape:
         top = h / 2 - hn / 2
         right = left + wn
         bottom = top + hn
-        views = views[:, left:right, top:bottom, :]
+        self.views = self.views[:, left:right, top:bottom, :]
     
     
 class Dataset:
@@ -50,9 +54,11 @@ class Dataset:
         self.splitted = False
         self.subtract_mean = subtract_mean
         self.V = V
+        print 'dataset inited'
+        print '  total size:', len(listfiles)
     
     def shuffle(self):
-        self.listfiles = random.shuffle(self.listfiles)
+        random.shuffle(self.listfiles)
         self.shuffled = True
 
     def split_val(self, split=(9,1)):
@@ -66,20 +72,22 @@ class Dataset:
             self.splitted = True 
 
     def batches(self, batch_size):
-        for x,y in self._batches(listfiles, batch_size)
+        for x,y in self._batches(self.listfiles, batch_size):
             yield x,y
         
 
     def validation_batch(self, batch_size):
         assert self.splitted, 'Not splitted to train/val!'
-        for x,y in self._batches(listfiles_val, batch_size)
+        for x,y in self._batches(listfiles_val, batch_size):
             yield x,y
 
     def _batches(self, listfiles, batch_size):
         n = len(listfiles)
         for i in xrange(0, n, batch_size):
+            starttime = time.time()
+
             lists = listfiles[i : i+batch_size]
-            x = np.zeros((batch_size, self.V, W, H, 3)) 
+            x = np.zeros((batch_size, self.V, 227, 227, 3)) 
             y = np.zeros(batch_size)
             
             for j,l in enumerate(lists):
@@ -90,8 +98,11 @@ class Dataset:
                 x[j, ...] = s.views
                 y[j] = s.label
             
+            print 'load batch time:', time.time()-starttime, 'sec'
             yield x, y
     
-
+    def size(self):
+        """ size of listfiles (if splitted, only count 'train', not 'val')"""
+        return len(self.listfiles)
 
 

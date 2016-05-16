@@ -5,6 +5,11 @@ import time
 from datetime import datetime
 import os
 import hickle as hkl
+import os.path as osp
+from glob import glob
+
+from input import Dataset
+
 
 currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
@@ -12,6 +17,7 @@ sys.path.append(parentdir)
 import model
 
 TRAIN_HKL = './data/view/hkl/train.hkl'
+LISTS_DIR = './data/view/list/train/'
 
 FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', '/tmp3/weitang114/MVCNN-TF/tmp/',
@@ -33,67 +39,29 @@ LEARNING_RATE_DECAY_FACTOR = 0.05  # Learning rate decay factor.
 
 np.set_printoptions(precision=3)
 
-def load_hkl(hklfile):
-    
-    V = FLAGS.n_views
-    w = h = 256
-
-    data = hkl.load(hklfile)
-    x, y  = data['x'], data['y']
-    
-    n = x.shape[0] / V
-    x = x.reshape((n, V, w, h, 3))
-    y = y[0::V]
-
-    print y.shape
-
-    assert x.shape == (n, V, w, h, 3), str(x.shape)
-    assert y.shape == (n,), str(y.shape) + ',' + str(n)
-
-    return x, y
 
 
-def shuffle(x, y):
-    n = x.shape[0] 
-    inds = range(n)
-    np.random.shuffle(inds)
-
-    x = x[inds]
-    y = y[inds]
-
-    return x, y
-
-def fetch_batch(x, y, step, batch_size):
-    n = x.shape[0]
-    step = step % (n/batch_size)
-    start = step * batch_size
-    end = (step + 1) * batch_size
-    return x[start:end], y[start:end]
-
-
-
-def train(x, y, ckptfile=''):
+def train(dataset, ckptfile=''):
     print 'train() called'
     is_finetune = bool(ckptfile)
     V = FLAGS.n_views
+    batch_size = FLAGS.batch_size
 
-    x, y = shuffle(x, y)
-    n = x.shape[0]
-    train_n = int(n*0.9)
-    x, y, val_x, val_y = x[:train_n], y[:train_n], x[train_n:], y[train_n:]
-    data_size = x.shape[0]
-    
-     
+    dataset.shuffle()
+    dataset.split_val()
+    data_size = dataset.size()
+
+
     with tf.Graph().as_default():
         startstep = 0 if not is_finetune else int(ckptfile.split('-')[-1])
         global_step = tf.Variable(startstep, trainable=False)
          
         
-        view_ = tf.placeholder('float32', shape=(None, V, 227, 227, 3), name='im0')
-        y_ = tf.placeholder('int64', shape=(None), name='y')
+        view_ = tf.placeholder('float32', shape=(batch_size, V, 227, 227, 3), name='im0')
+        y_ = tf.placeholder('int64', shape=(batch_size), name='y')
 
         fc8 = model.inference_multiview(view_)
-        loss = model.loss(fc5, y_)
+        loss = model.loss(fc8, y_)
 
         train_op = model.train(loss, global_step, data_size)
         prediction = model.classify(fc8)
@@ -122,9 +90,11 @@ def train(x, y, ckptfile=''):
         summary_writer = tf.train.SummaryWriter(FLAGS.train_dir,
                                                 graph_def=sess.graph_def) 
 
-
-        for step in xrange(startstep, FLAGS.max_steps):
-            batch_x, batch_y = fetch_batch(x, y, step, FLAGS.batch_size)
+        step = startstep
+        for batch_x, batch_y in dataset.batches(batch_size):
+            if step >= FLAGS.max_steps:
+                break
+            step += 1
 
             start_time = time.time()
             feed_dict = {view_: batch_x,
@@ -195,35 +165,23 @@ def train(x, y, ckptfile=''):
 def main(argv):
     st = time.time() 
     print 'start loading data'
-    x, y = load_hkl(TRAIN_HKL)
-    x = x.astype('float32', copy=False)
-    # xf[:] = x
-    # x = xf
 
-    x = crop227(x)
-    # x = subtract_mean(x)
+    listfiles = read_lists()
+    dataset = Dataset(listfiles, subtract_mean=True, V=12)
 
     print 'done loading data, time=', time.time() - st
 
     FLAGS.batch_size = 32
 
-    train(x, y, FLAGS.weights)
+    train(dataset, FLAGS.weights)
 
 
-def crop227(x):
-    assert x.shape[1,2] == (256,256)
-    x = x[:, 14:14+227, 14:14+227]
-
-    return x
-            
-def subtract_mean(x):
-    x[..., 0] -= 122. # R
-    x[..., 1] -= 116. # G
-    x[..., 2] -= 104. # B
-    
-    return x
-            
-
+def read_lists():
+    classes = np.loadtxt('./data/classes.txt', dtype=str)
+    lists = []
+    for c in classes:
+        lists.extend(glob(osp.join(LISTS_DIR, c, '*.txt')))
+    return lists
 
 
 if __name__ == '__main__':

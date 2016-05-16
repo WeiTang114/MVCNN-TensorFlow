@@ -84,35 +84,40 @@ def _variable_with_weight_decay(name, shape, stddev, wd):
 
 
 
-def _conv(name, in_, ksize, padding=DEFAULT_PADDING):
+def _conv(name, in_, ksize, strides=[1,1,1,1], padding=DEFAULT_PADDING):
     
     n_kern = ksize[3]
-    
 
     with tf.variable_scope(name, reuse=False) as scope:
         kernel = _variable_with_weight_decay('weights', shape=ksize, stddev=2.5e-4, wd=0.0)
-        conv = tf.nn.conv2d(in_, kernel, [1,1,1,1], padding=padding)
+        conv = tf.nn.conv2d(in_, kernel, strides, padding=padding)
         biases = _variable_on_cpu('biases', [n_kern], tf.constant_initializer(0.0))
         bias = tf.nn.bias_add(conv, biases)
         conv = tf.nn.relu(bias, name=scope.name)
         _activation_summary(conv)
 
+    print name, conv.get_shape().as_list()
     return conv
 
 def _maxpool(name, in_, ksize, strides, padding=DEFAULT_PADDING):
-    return tf.nn.max_pool(in_, ksize=ksize, strides=strides,
+    pool = tf.nn.max_pool(in_, ksize=ksize, strides=strides,
                           padding=padding, name=name)
+
+    print name, pool.get_shape().as_list()
+    return pool
 
 def _fc(name, in_, outsize):
     with tf.variable_scope(name, reuse=False) as scope:
         # Move everything into depth so we can perform a single matrix multiply.
         
-        weights = _variable_with_weight_decay('weights', shape=[in_.size, outsize],
+        insize = in_.get_shape()[-1]
+        weights = _variable_with_weight_decay('weights', shape=[insize, outsize],
                                               stddev=4.3e-4, wd=0.004)
         biases = _variable_on_cpu('biases', [outsize], tf.constant_initializer(0.0))
         fc = tf.nn.relu(tf.matmul(in_, weights) + biases, name=scope.name)
         _activation_summary(fc)
 
+    print name, fc.get_shape().as_list()
     return fc
     
 
@@ -132,7 +137,7 @@ def inference_multiview(views):
         p = '_view%d' % i
         view = tf.gather(views, i) # NxWxHxC
 
-        conv1 = _conv('conv1'+p, view, [11, 11, 3, 96], 'VALID')
+        conv1 = _conv('conv1'+p, view, [11, 11, 3, 96], [1, 4, 4, 1], 'VALID')
         lrn1 = None
         pool1 = _maxpool('pool1'+p, conv1, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='VALID')
 
@@ -146,14 +151,18 @@ def inference_multiview(views):
 
         pool5 = _maxpool('pool5'+p, conv5, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='VALID')
         
-        pool5 = tf.reshape(pool5, [FLAGS.batch_size, pool5.get_shape[1:]])
+        dim = 1
+        for d in pool5.get_shape().as_list()[1:]:
+            dim *= d
 
-        reshape = tf.reshape(pool3, [FLAGS.batch_size, dim])
+        reshape = tf.reshape(pool5, [FLAGS.batch_size, dim])
         
         view_pool.append(reshape)
 
 
     pool5_vp = _view_pool(view_pool, 'pool5_vp')
+    print 'pool5_vp', pool5_vp.get_shape().as_list()
+
 
     fc6 = _fc('fc6', pool5_vp, 4096)
     fc7 = _fc('fc7', fc6, 4096)
@@ -167,13 +176,14 @@ def _view_pool(view_features, name):
     for v in view_features[1:]:
         v = tf.expand_dims(v, 0)
         vp = tf.concat(0, [vp, v])
+    print 'vp before reducing:', vp.get_shape().as_list()
     vp = tf.reduce_max(vp, [0], name=name)
     return vp 
 
 
 def loss(fc8, labels):
     l = tf.nn.sparse_softmax_cross_entropy_with_logits(fc8, labels)
-    l = tf.reduce_mean(loss)
+    l = tf.reduce_mean(l)
     
     tf.add_to_collection('losses', l)
 
