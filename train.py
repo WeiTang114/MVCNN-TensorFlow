@@ -17,7 +17,8 @@ sys.path.append(parentdir)
 import model
 
 TRAIN_HKL = './data/view/hkl/train.hkl'
-LISTS_DIR = './data/view/list/train/'
+TRAIN_LOL = './data/view/train_lists.txt'
+VAL_LOL = './data/view/val_lists.txt'
 VAL_SAMPLE_SIZE = 256 
 
 FLAGS = tf.app.flags.FLAGS
@@ -44,15 +45,15 @@ np.set_printoptions(precision=3)
 
 
 
-def train(dataset, ckptfile='', caffemodel=''):
+def train(dataset_train, dataset_val, ckptfile='', caffemodel=''):
     print 'train() called'
     is_finetune = bool(ckptfile)
     V = FLAGS.n_views
     batch_size = FLAGS.batch_size
 
-    dataset.shuffle()
-    dataset.split_val()
-    data_size = dataset.size()
+    dataset_train.shuffle()
+    dataset_val.shuffle()
+    data_size = dataset_train.size()
     print 'training size:', data_size
 
 
@@ -63,8 +64,9 @@ def train(dataset, ckptfile='', caffemodel=''):
         
         view_ = tf.placeholder('float32', shape=(None, V, 227, 227, 3), name='im0')
         y_ = tf.placeholder('int64', shape=(None), name='y')
+        keep_prob_ = tf.placeholder('float32')
 
-        fc8 = model.inference_multiview(view_)
+        fc8 = model.inference_multiview(view_, keep_prob_)
         loss = model.loss(fc8, y_)
         train_op = model.train(loss, global_step, data_size)
         prediction = model.classify(fc8)
@@ -104,14 +106,15 @@ def train(dataset, ckptfile='', caffemodel=''):
         for epoch in xrange(100):
             print 'epoch:', epoch
 
-            for batch_x, batch_y in dataset.batches(batch_size):
+            for batch_x, batch_y in dataset_train.batches(batch_size):
                 if step >= FLAGS.max_steps:
                     break
                 step += 1
 
                 start_time = time.time()
                 feed_dict = {view_: batch_x,
-                             y_ : batch_y}
+                             y_ : batch_y,
+                             keep_prob_: 0.5 }
 
                 _, pred, loss_value = sess.run(
                         [train_op, prediction,  loss,],
@@ -135,9 +138,10 @@ def train(dataset, ckptfile='', caffemodel=''):
                     
                     val_y = []
                     for val_step, (val_batch_x, val_batch_y) in \
-                            enumerate(dataset.validation_batches_random(batch_size, VAL_SAMPLE_SIZE)):
+                            enumerate(dataset_val.sample_batches(batch_size, VAL_SAMPLE_SIZE)):
                         val_feed_dict = {view_: val_batch_x,
-                                         y_  : val_batch_y}
+                                         y_  : val_batch_y,
+                                         keep_prob_: 1.0 }
                         val_loss, pred = sess.run([loss, prediction], feed_dict=val_feed_dict)
                         # print val_batch_y[:20]
                         # print pred[:20]
@@ -177,22 +181,21 @@ def main(argv):
     st = time.time() 
     print 'start loading data'
 
-    listfiles = read_lists()
-    dataset = Dataset(listfiles, subtract_mean=False, V=12)
+    listfiles_train = read_lists(TRAIN_LOL)
+    listfiles_val = read_lists(VAL_LOL)
+    dataset_train = Dataset(listfiles_train, subtract_mean=False, V=12)
+    dataset_val = Dataset(listfiles_val, subtract_mean=False, V=12)
 
     print 'done loading data, time=', time.time() - st
 
     FLAGS.batch_size = 32
 
-    train(dataset, FLAGS.weights, FLAGS.caffemodel)
+    train(dataset_train, dataset_val, FLAGS.weights, FLAGS.caffemodel)
 
 
-def read_lists():
-    classes = np.loadtxt('./data/classes.txt', dtype=str)
-    lists = []
-    for c in classes:
-        lists.extend(glob(osp.join(LISTS_DIR, c, '*.txt')))
-    return lists
+def read_lists(list_of_lists_file):
+    return np.loadtxt(list_of_lists_file, dtype=str).tolist()
+    
 
 
 if __name__ == '__main__':

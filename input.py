@@ -50,9 +50,7 @@ class Shape:
 class Dataset:
     def __init__(self, listfiles, subtract_mean, V):
         self.listfiles = listfiles
-        self.listfiles_val = []
         self.shuffled = False
-        self.splitted = False
         self.subtract_mean = subtract_mean
         self.V = V
         print 'dataset inited'
@@ -62,33 +60,15 @@ class Dataset:
         random.shuffle(self.listfiles)
         self.shuffled = True
 
-    def split_val(self, split=(9,1)):
-        if not self.shuffled:
-            print 'Warning: not shuffled!'
-        if not self.splitted:
-            n = len(self.listfiles)
-            cut = n * split[0] / sum(split)
-            self.listfiles_val = self.listfiles[cut:]
-            self.listfiles_val = self.listfiles[:cut]
-            self.splitted = True 
 
     def batches(self, batch_size):
         for x,y in self._batches_fast(self.listfiles, batch_size):
             yield x,y
         
-
-    def validation_batches(self, batch_size):
-        assert self.splitted, 'Not splitted to train/val!'
-        for x,y in self._batches_fast(self.listfiles_val, batch_size):
-            yield x,y
-
-    def validation_batches_random(self, batch_size, n):
-        assert self.splitted, 'Not splitted to train/val!'
-        
-        listfiles = random.sample(self.listfiles_val, n)
+    def sample_batches(self, batch_size, n):
+        listfiles = random.sample(self.listfiles, n)
         for x,y in self._batches_fast(listfiles, batch_size):
             yield x,y
-
 
     def _batches(self, listfiles, batch_size):
         n = len(listfiles)
@@ -133,6 +113,8 @@ class Dataset:
 
         # background loading Shapes process
         p = mp.Process(target=load, args=(listfiles, q))
+        # daemon child is killed when parent exits
+        p.daemon = True
         p.start()
 
 

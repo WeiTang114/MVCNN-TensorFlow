@@ -108,7 +108,7 @@ def _maxpool(name, in_, ksize, strides, padding=DEFAULT_PADDING):
     print name, pool.get_shape().as_list()
     return pool
 
-def _fc(name, in_, outsize):
+def _fc(name, in_, outsize, dropout=1.0):
     with tf.variable_scope(name, reuse=False) as scope:
         # Move everything into depth so we can perform a single matrix multiply.
         
@@ -118,14 +118,18 @@ def _fc(name, in_, outsize):
                                               stddev=stddev, wd=0.004)
         biases = _variable_on_cpu('biases', [outsize], tf.constant_initializer(0.0))
         fc = tf.nn.relu(tf.matmul(in_, weights) + biases, name=scope.name)
+        fc = tf.nn.dropout(fc, dropout)
+
         _activation_summary(fc)
+
+    
 
     print name, fc.get_shape().as_list()
     return fc
     
 
 
-def inference_multiview(views):
+def inference_multiview(views, keep_prob):
     """
     views: N x V x W x H x C tensor
     """
@@ -167,8 +171,8 @@ def inference_multiview(views):
     print 'pool5_vp', pool5_vp.get_shape().as_list()
 
 
-    fc6 = _fc('fc6', pool5_vp, 4096)
-    fc7 = _fc('fc7', fc6, 4096)
+    fc6 = _fc('fc6', pool5_vp, 4096, dropout=keep_prob)
+    fc7 = _fc('fc7', fc6, 4096, dropout=keep_prob)
     fc8 = _fc('fc8', fc7, 40)
 
     return fc8 
