@@ -127,8 +127,8 @@ def main(argv):
     st = time.time() 
     print 'start loading data'
 
-    listfiles = read_lists(TEST_LOL)
-    dataset = Dataset(listfiles, subtract_mean=False, V=12)
+    listfiles, labels = read_lists(TEST_LOL)
+    dataset = Dataset(listfiles, labels, subtract_mean=False, V=12)
 
     print 'done loading data, time=', time.time() - st
 
@@ -138,7 +138,9 @@ def main(argv):
 
 
 def read_lists(list_of_lists_file):
-    return np.loadtxt(list_of_lists_file, dtype=str).tolist()
+    listfile_labels = np.loadtxt(list_of_lists_file, dtype=str).tolist()
+    listfiles, labels  = zip(*[(l[0], int(l[1])) for l in listfile_labels])
+    return listfiles, labels
     
 
 

@@ -48,8 +48,9 @@ class Shape:
     
     
 class Dataset:
-    def __init__(self, listfiles, subtract_mean, V):
+    def __init__(self, listfiles, labels, subtract_mean, V):
         self.listfiles = listfiles
+        self.labels = labels
         self.shuffled = False
         self.subtract_mean = subtract_mean
         self.V = V
@@ -57,7 +58,9 @@ class Dataset:
         print '  total size:', len(listfiles)
     
     def shuffle(self):
-        random.shuffle(self.listfiles)
+        z = zip(self.listfiles, self.labels)
+        random.shuffle(z)
+        self.listfiles, self.labels = [list(l) for l in zip(*z)]
         self.shuffled = True
 
 
