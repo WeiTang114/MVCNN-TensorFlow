@@ -2,20 +2,16 @@
 import tensorflow as tf
 import re
 import numpy as np
+import globals as g_
 
 
 FLAGS = tf.app.flags.FLAGS
 # Basic model parameters.
-tf.app.flags.DEFINE_integer('batch_size', 50,
+tf.app.flags.DEFINE_integer('batch_size', g_.BATCH_SIZE,
                             """Number of images to process in a batch.""")
-tf.app.flags.DEFINE_float('learning_rate', 0.01,
+tf.app.flags.DEFINE_float('learning_rate', g_.INIT_LEARNING_RATE,
                             """Initial learning rate.""")
 
-# Global constants describing the CIFAR-10 data set.
-IMAGE_SIZE = 100
-NUM_CLASSES = 90
-# NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 
-# NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = cifar10_input.NUM_EXAMPLES_PER_EPOCH_FOR_EVAL
 
 # Constants describing the training process.
 MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
@@ -85,11 +81,11 @@ def _variable_with_weight_decay(name, shape, stddev, wd):
 
 
 
-def _conv(name, in_, ksize, strides=[1,1,1,1], padding=DEFAULT_PADDING):
+def _conv(name, in_, ksize, strides=[1,1,1,1], padding=DEFAULT_PADDING, reuse=False):
     
     n_kern = ksize[3]
 
-    with tf.variable_scope(name, reuse=False) as scope:
+    with tf.variable_scope(name, reuse=reuse) as scope:
         stddev = 1 / np.prod(ksize[:3], dtype=float) ** 0.5
         kernel = _variable_with_weight_decay('weights', shape=ksize, stddev=stddev, wd=0.0)
         conv = tf.nn.conv2d(in_, kernel, strides, padding=padding)
@@ -108,8 +104,8 @@ def _maxpool(name, in_, ksize, strides, padding=DEFAULT_PADDING):
     print name, pool.get_shape().as_list()
     return pool
 
-def _fc(name, in_, outsize, dropout=1.0):
-    with tf.variable_scope(name, reuse=False) as scope:
+def _fc(name, in_, outsize, dropout=1.0, reuse=False):
+    with tf.variable_scope(name, reuse=reuse) as scope:
         # Move everything into depth so we can perform a single matrix multiply.
         
         insize = in_.get_shape().as_list()[-1]
@@ -129,40 +125,37 @@ def _fc(name, in_, outsize, dropout=1.0):
     
 
 
-def inference_multiview(views, keep_prob):
+def inference_multiview(views, n_classes, keep_prob):
     """
     views: N x V x W x H x C tensor
     """
-
-    V = FLAGS.n_views;
+    n_views = views.get_shape().as_list()[1] 
 
     # transpose views : (NxVxWxHxC) -> (VxNxWxHxC)
     views = tf.transpose(views, perm=[1, 0, 2, 3, 4])
     
     view_pool = []
-    for i in xrange(V):
-        p = '_view%d' % i
+    for i in xrange(n_views):
+        # set reuse True for i > 0, for weight-sharing
+        reuse = (i != 0)
         view = tf.gather(views, i) # NxWxHxC
 
-        conv1 = _conv('conv1'+p, view, [11, 11, 3, 96], [1, 4, 4, 1], 'VALID')
+        conv1 = _conv('conv1', view, [11, 11, 3, 96], [1, 4, 4, 1], 'VALID', reuse=reuse)
         lrn1 = None
-        pool1 = _maxpool('pool1'+p, conv1, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='VALID')
+        pool1 = _maxpool('pool1', conv1, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='VALID')
 
-        conv2 = _conv('conv2'+p, pool1, [5, 5, 96, 256])
+        conv2 = _conv('conv2', pool1, [5, 5, 96, 256], reuse=reuse)
         lrn2 = None
-        pool2 = _maxpool('pool2'+p, conv2, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='VALID')
+        pool2 = _maxpool('pool2', conv2, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='VALID')
         
-        conv3 = _conv('conv3'+p, pool2, [3, 3, 256, 384])
-        conv4 = _conv('conv4'+p, conv3, [3, 3, 384, 384])
-        conv5 = _conv('conv5'+p, conv4, [3, 3, 384, 256])
+        conv3 = _conv('conv3', pool2, [3, 3, 256, 384], reuse=reuse)
+        conv4 = _conv('conv4', conv3, [3, 3, 384, 384], reuse=reuse)
+        conv5 = _conv('conv5', conv4, [3, 3, 384, 256], reuse=reuse)
 
-        pool5 = _maxpool('pool5'+p, conv5, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='VALID')
+        pool5 = _maxpool('pool5', conv5, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='VALID')
         
-        dim = 1
-        for d in pool5.get_shape().as_list()[1:]:
-            dim *= d
-
-        reshape = tf.reshape(pool5, [FLAGS.batch_size, dim])
+        dim = np.prod(pool5.get_shape().as_list()[1:])
+        reshape = tf.reshape(pool5, [-1, dim])
         
         view_pool.append(reshape)
 
@@ -173,14 +166,13 @@ def inference_multiview(views, keep_prob):
 
     fc6 = _fc('fc6', pool5_vp, 4096, dropout=keep_prob)
     fc7 = _fc('fc7', fc6, 4096, dropout=keep_prob)
-    fc8 = _fc('fc8', fc7, 40)
+    fc8 = _fc('fc8', fc7, n_classes)
 
     return fc8 
     
 
 def load_alexnet_to_mvcnn(sess, caffetf_modelpath):
     """ caffemodel: np.array, """
-    V = FLAGS.n_views
 
     def load(name, layer_data, group=1):
         w, b = layer_data
@@ -196,15 +188,14 @@ def load_alexnet_to_mvcnn(sess, caffetf_modelpath):
 
     caffemodel = np.load(caffetf_modelpath)
     data_dict = caffemodel.item()
-    for v in xrange(V):
-        for l in ['conv1', 'conv2', 'conv3', 'conv4', 'conv5']:
-            name = l + '_view%d' % v
+    for l in ['conv1', 'conv2', 'conv3', 'conv4', 'conv5']:
+        name = l
 
-            # historical grouping by alexnet
-            if l == 'conv2' or l == 'conv4' or l == 'conv5':
-                load(name, data_dict[l], group=2)
-            else:
-                load(name, data_dict[l])
+        # historical grouping by alexnet
+        if l == 'conv2' or l == 'conv4' or l == 'conv5':
+            load(name, data_dict[l], group=2)
+        else:
+            load(name, data_dict[l])
 
     
     for l in ['fc6', 'fc7']:
@@ -235,11 +226,6 @@ def classify(fc8):
     y = tf.argmax(softmax, 1)
     return y
 
-def accuracy(preds, labels):
-    correct_prediction = tf.equal(preds, labels)
-    acc = tf.reduce_mean(tf.cast(correct_prediction, 'float'))
-    return acc
-    
 
 def _add_loss_summaries(total_loss):
     """Add summaries for losses in CIFAR-10 model.
@@ -291,7 +277,7 @@ def train(total_loss, global_step, data_size):
         tf.histogram_summary(var.op.name, var)
 
     for grad,var in grads:
-        if grad:
+        if grad is not None:
             tf.histogram_summary(var.op.name + '/gradients', grad)
 
     variable_averages = tf.train.ExponentialMovingAverage(

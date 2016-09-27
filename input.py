@@ -3,6 +3,7 @@ import random
 import numpy as np
 import time
 import multiprocessing as mp
+import globals as g_
 
 W = H = 256
 
@@ -112,7 +113,8 @@ class Dataset:
             q.put(None)
             q.close()
 
-        q = mp.Queue(maxsize=128)
+        # This must be larger than twice the batch_size
+        q = mp.Queue(maxsize=g_.INPUT_QUEUE_SIZE)
 
         # background loading Shapes process
         p = mp.Process(target=load, args=(listfiles, q))
