@@ -1,0 +1,14 @@
+1
+12
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/bathtub/train/bathtub_0002.off/bathtub_0002.0.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/bathtub/train/bathtub_0002.off/bathtub_0002.1.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/bathtub/train/bathtub_0002.off/bathtub_0002.2.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/bathtub/train/bathtub_0002.off/bathtub_0002.3.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/bathtub/train/bathtub_0002.off/bathtub_0002.4.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/bathtub/train/bathtub_0002.off/bathtub_0002.5.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/bathtub/train/bathtub_0002.off/bathtub_0002.6.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/bathtub/train/bathtub_0002.off/bathtub_0002.7.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/bathtub/train/bathtub_0002.off/bathtub_0002.8.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/bathtub/train/bathtub_0002.off/bathtub_0002.9.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/bathtub/train/bathtub_0002.off/bathtub_0002.10.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/bathtub/train/bathtub_0002.off/bathtub_0002.11.png

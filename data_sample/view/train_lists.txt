@@ -1,0 +1,4 @@
+data_sample/view/list/train/airplane/airplane_0001.off.txt 0
+data_sample/view/list/train/airplane/airplane_0002.off.txt 0
+data_sample/view/list/train/bathtub/bathtub_0001.off.txt 1
+data_sample/view/list/train/bathtub/bathtub_0002.off.txt 1

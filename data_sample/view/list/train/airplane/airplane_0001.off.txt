@@ -1,0 +1,14 @@
+0
+12
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/airplane/train/airplane_0001.off/airplane_0001.0.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/airplane/train/airplane_0001.off/airplane_0001.1.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/airplane/train/airplane_0001.off/airplane_0001.2.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/airplane/train/airplane_0001.off/airplane_0001.3.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/airplane/train/airplane_0001.off/airplane_0001.4.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/airplane/train/airplane_0001.off/airplane_0001.5.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/airplane/train/airplane_0001.off/airplane_0001.6.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/airplane/train/airplane_0001.off/airplane_0001.7.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/airplane/train/airplane_0001.off/airplane_0001.8.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/airplane/train/airplane_0001.off/airplane_0001.9.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/airplane/train/airplane_0001.off/airplane_0001.10.png
+/tmp3/weitang114/ibsr/data_modelnet40/view/classes/airplane/train/airplane_0001.off/airplane_0001.11.png
