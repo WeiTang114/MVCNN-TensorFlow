@@ -25,8 +25,6 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', '/tmp3/weitang114/MVCNN-TF/tmp/',
                            """Directory where to write event logs """
                            """and checkpoint.""")
-tf.app.flags.DEFINE_integer('max_steps', 1000000,
-                            """Number of batches to run.""")
 tf.app.flags.DEFINE_boolean('log_device_placement', False,
                             """Whether to log device placement.""")
 tf.app.flags.DEFINE_string('weights', '', 
@@ -64,13 +62,14 @@ def train(dataset_train, dataset_val, ckptfile='', caffemodel=''):
         
         view_ = tf.placeholder('float32', shape=(None, V, 227, 227, 3), name='im0')
         y_ = tf.placeholder('int64', shape=(None), name='y')
+        predictions_ = tf.placeholder('int64', shape=(None), name='predictions')
         keep_prob_ = tf.placeholder('float32')
 
         fc8 = model.inference_multiview(view_, keep_prob_)
         loss = model.loss(fc8, y_)
         train_op = model.train(loss, global_step, data_size)
         prediction = model.classify(fc8)
-        accuracy = model.accuracy(prediction, y_)
+        accuracy = model.accuracy(predictions_, y_)
 
         # build the summary operation based on the F colection of Summaries
         summary_op = tf.merge_all_summaries()
@@ -88,9 +87,11 @@ def train(dataset_train, dataset_val, ckptfile='', caffemodel=''):
         sess = tf.Session(config=tf.ConfigProto(log_device_placement=FLAGS.log_device_placement))
         
         if is_finetune:
+            # load checkpoint file
             saver.restore(sess, ckptfile)
             print 'restore variables done'
         elif caffemodel:
+            # load caffemodel generated with caffe-tensorflow
             sess.run(init_op)
             model.load_alexnet_to_mvcnn(sess, caffemodel)
             print 'loaded pretrained caffemodel:', caffemodel
@@ -107,8 +108,6 @@ def train(dataset_train, dataset_val, ckptfile='', caffemodel=''):
             print 'epoch:', epoch
 
             for batch_x, batch_y in dataset_train.batches(batch_size):
-                if step >= FLAGS.max_steps:
-                    break
                 step += 1
 
                 start_time = time.time()
@@ -150,7 +149,7 @@ def train(dataset_train, dataset_val, ckptfile='', caffemodel=''):
                         val_y.extend(val_batch_y)
 
                     val_loss = np.mean(val_losses)
-                    acc = sess.run(accuracy, feed_dict={prediction: np.array(predictions), y_:val_y[:predictions.size]})
+                    acc = sess.run(accuracy, feed_dict={predictions_: np.array(predictions), y_:val_y[:predictions.size]})
                     print '%s: step %d, validation loss=%.2f, acc=%f' %\
                             (datetime.now(), step, val_loss, acc*100.)
 
@@ -170,8 +169,7 @@ def train(dataset_train, dataset_val, ckptfile='', caffemodel=''):
                     summary_writer.add_summary(summary_str, step)
                     summary_writer.flush()
 
-                if step % 200  == 0 or (step+1) == FLAGS.max_steps \
-                        and step > startstep:
+                if step % 200  == 0 and step > startstep:
                     checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
                     saver.save(sess, checkpoint_path, global_step=step)
 
