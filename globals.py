@@ -12,7 +12,7 @@ TEST_LOL = './data/view/test_lists.txt'
 """
 constants for both training and testing
 """
-BATCH_SIZE = 32
+BATCH_SIZE = 16
 
 # this must be more than twice the BATCH_SIZE
 INPUT_QUEUE_SIZE = 4 * BATCH_SIZE

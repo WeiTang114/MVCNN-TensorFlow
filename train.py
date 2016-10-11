@@ -92,12 +92,11 @@ def train(dataset_train, dataset_val, ckptfile='', caffemodel=''):
                                                 graph=sess.graph) 
 
         step = startstep
-        for epoch in xrange(20):
+        for epoch in xrange(100):
             print 'epoch:', epoch
 
             for batch_x, batch_y in dataset_train.batches(batch_size):
                 step += 1
-                print step
 
                 start_time = time.time()
                 feed_dict = {view_: batch_x,
@@ -113,7 +112,7 @@ def train(dataset_train, dataset_val, ckptfile='', caffemodel=''):
                 assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
 
                 # print training information
-                if step % 10 == 0:
+                if step % 10 == 0 or step - startstep <= 30:
                     sec_per_batch = float(duration)
                     print '%s: step %d, loss=%.2f (%.1f examples/sec; %.3f sec/batch)' \
                          % (datetime.now(), step, loss_value,
@@ -162,7 +161,6 @@ def train(dataset_train, dataset_val, ckptfile='', caffemodel=''):
                     checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
                     saver.save(sess, checkpoint_path, global_step=step)
 
-                print 'enditer'
 
 
 def main(argv):

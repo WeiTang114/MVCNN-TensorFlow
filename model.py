@@ -17,17 +17,11 @@ tf.app.flags.DEFINE_float('learning_rate', g_.INIT_LEARNING_RATE,
 MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
 NUM_EPOCHS_PER_DECAY = 350.0      # Epochs after which learning rate decays.
 LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
+WEIGHT_DECAY_FACTOR = 0.004 / 5. # 3500 -> 2.8
 
 TOWER_NAME = 'tower'
 DEFAULT_PADDING = 'SAME'
 
-def weight_variable(shape):
-    initial = tf.truncated_normal(shape, stddev=0.1)
-    return tf.Variable(initial)
-
-def bias_variable(shape):
-    initial = tf.constant(0.1, shape=shape)
-    return tf.Variable(initial)
 
 def _activation_summary(x):
     """Helper to create summaries for activations.
@@ -58,21 +52,20 @@ def _variable_on_cpu(name, shape, initializer):
     return var
 
 
-def _variable_with_weight_decay(name, shape, stddev, wd):
+def _variable_with_weight_decay(name, shape, wd):
     """Helper to create an initialized Variable with weight decay.
     Note that the Variable is initialized with a truncated normal distribution.
     A weight decay is added only if one is specified.
     Args:
       name: name of the variable
       shape: list of ints
-      stddev: standard deviation of a truncated Gaussian
       wd: add L2Loss weight decay multiplied by this float. If None, weight
           decay is not added for this Variable.
     Returns:
       Variable Tensor
     """
     var = _variable_on_cpu(name, shape,
-                           tf.truncated_normal_initializer(stddev=stddev))
+                           initializer=tf.contrib.layers.xavier_initializer())
     if wd:
         weight_decay = tf.mul(tf.nn.l2_loss(var), wd, name='weight_loss')
         tf.add_to_collection('losses', weight_decay)
@@ -86,8 +79,7 @@ def _conv(name, in_, ksize, strides=[1,1,1,1], padding=DEFAULT_PADDING, reuse=Fa
     n_kern = ksize[3]
 
     with tf.variable_scope(name, reuse=reuse) as scope:
-        stddev = 1 / np.prod(ksize[:3], dtype=float) ** 0.5
-        kernel = _variable_with_weight_decay('weights', shape=ksize, stddev=stddev, wd=0.0)
+        kernel = _variable_with_weight_decay('weights', shape=ksize, wd=WEIGHT_DECAY_FACTOR)
         conv = tf.nn.conv2d(in_, kernel, strides, padding=padding)
         biases = _variable_on_cpu('biases', [n_kern], tf.constant_initializer(0.0))
         bias = tf.nn.bias_add(conv, biases)
@@ -109,9 +101,7 @@ def _fc(name, in_, outsize, dropout=1.0, reuse=False):
         # Move everything into depth so we can perform a single matrix multiply.
         
         insize = in_.get_shape().as_list()[-1]
-        stddev = 1 / float(insize) ** 0.5
-        weights = _variable_with_weight_decay('weights', shape=[insize, outsize],
-                                              stddev=stddev, wd=0.004)
+        weights = _variable_with_weight_decay('weights', shape=[insize, outsize], wd=0.004)
         biases = _variable_on_cpu('biases', [outsize], tf.constant_initializer(0.0))
         fc = tf.nn.relu(tf.matmul(in_, weights) + biases, name=scope.name)
         fc = tf.nn.dropout(fc, dropout)
@@ -265,7 +255,7 @@ def train(total_loss, global_step, data_size):
     loss_averages_op = _add_loss_summaries(total_loss)
 
     with tf.control_dependencies([loss_averages_op]):
-        opt = tf.train.GradientDescentOptimizer(lr)
+        opt = tf.train.AdamOptimizer(lr)
         grads = opt.compute_gradients(total_loss)
 
     
