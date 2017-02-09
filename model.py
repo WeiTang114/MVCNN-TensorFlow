@@ -72,18 +72,27 @@ def _variable_with_weight_decay(name, shape, wd):
     return var
 
 
-
-
-def _conv(name, in_, ksize, strides=[1,1,1,1], padding=DEFAULT_PADDING, reuse=False):
+def _conv(name, in_ ,ksize, strides=[1,1,1,1], padding=DEFAULT_PADDING, group=1, reuse=False):
     
     n_kern = ksize[3]
+    convolve = lambda i, k: tf.nn.conv2d(i, k, strides, padding=padding)
 
     with tf.variable_scope(name, reuse=reuse) as scope:
-        kernel = _variable_with_weight_decay('weights', shape=ksize, wd=WEIGHT_DECAY_FACTOR)
-        conv = tf.nn.conv2d(in_, kernel, strides, padding=padding)
+        if group == 1:
+            kernel = _variable_with_weight_decay('weights', shape=ksize, wd=0.0)
+            conv = convolve(in_, kernel)
+	else:
+            ksize[2] /= group
+            kernel = _variable_with_weight_decay('weights', shape=ksize, wd=0.0)
+	    input_groups = tf.split(3, group, in_)
+	    kernel_groups = tf.split(3, group, kernel)
+	    output_groups = [convolve(i, k) for i, k in zip(input_groups, kernel_groups)]
+	    # Concatenate the groups
+	    conv = tf.concat(3, output_groups)
+
         biases = _variable_on_cpu('biases', [n_kern], tf.constant_initializer(0.0))
-        bias = tf.nn.bias_add(conv, biases)
-        conv = tf.nn.relu(bias, name=scope.name)
+        conv = tf.nn.bias_add(conv, biases)
+        conv = tf.nn.relu(conv, name=scope.name)
         _activation_summary(conv)
 
     print name, conv.get_shape().as_list()
@@ -134,13 +143,13 @@ def inference_multiview(views, n_classes, keep_prob):
         lrn1 = None
         pool1 = _maxpool('pool1', conv1, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='VALID')
 
-        conv2 = _conv('conv2', pool1, [5, 5, 96, 256], reuse=reuse)
+        conv2 = _conv('conv2', pool1, [5, 5, 96, 256], group=2, reuse=reuse)
         lrn2 = None
         pool2 = _maxpool('pool2', conv2, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='VALID')
         
         conv3 = _conv('conv3', pool2, [3, 3, 256, 384], reuse=reuse)
-        conv4 = _conv('conv4', conv3, [3, 3, 384, 384], reuse=reuse)
-        conv5 = _conv('conv5', conv4, [3, 3, 384, 256], reuse=reuse)
+        conv4 = _conv('conv4', conv3, [3, 3, 384, 384], group=2, reuse=reuse)
+        conv5 = _conv('conv5', conv4, [3, 3, 384, 256], group=2, reuse=reuse)
 
         pool5 = _maxpool('pool5', conv5, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='VALID')
         
@@ -164,33 +173,26 @@ def inference_multiview(views, n_classes, keep_prob):
 def load_alexnet_to_mvcnn(sess, caffetf_modelpath):
     """ caffemodel: np.array, """
 
-    def load(name, layer_data, group=1):
-        w, b = layer_data
-
-        if group != 1:
-            w = np.concatenate((w, w), axis=2) 
-
-        with tf.variable_scope(name, reuse=True):
-            for subkey, data in zip(('weights', 'biases'), (w, b)):
-                print 'loading ', name, subkey
-                var = tf.get_variable(subkey)
-                sess.run(var.assign(data))
-
     caffemodel = np.load(caffetf_modelpath)
     data_dict = caffemodel.item()
-    for l in ['conv1', 'conv2', 'conv3', 'conv4', 'conv5']:
+    for l in ['conv1', 'conv2', 'conv3', 'conv4', 'conv5', 'fc6', 'fc7']:
         name = l
-
-        # historical grouping by alexnet
-        if l == 'conv2' or l == 'conv4' or l == 'conv5':
-            load(name, data_dict[l], group=2)
-        else:
-            load(name, data_dict[l])
-
+        _load_param(sess, name, data_dict[l])
     
-    for l in ['fc6', 'fc7']:
-        load(l, data_dict[l])
-    
+
+def _load_param(sess, name, layer_data):
+    w, b = layer_data
+
+    with tf.variable_scope(name, reuse=True):
+        for subkey, data in zip(('weights', 'biases'), (w, b)):
+            print 'loading ', name, subkey
+
+            try:
+                var = tf.get_variable(subkey)
+                sess.run(var.assign(data))
+            except ValueError as e: 
+                print 'varirable loading failed:', subkey, '(%s)' % str(e)
+
 
 def _view_pool(view_features, name):
     vp = tf.expand_dims(view_features[0], 0) # eg. [100] -> [1, 100]
