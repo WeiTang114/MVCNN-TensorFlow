@@ -35,8 +35,8 @@ def _activation_summary(x):
     # Remove 'tower_[0-9]/' from the name in case this is a multi-GPU training
     # session. This helps the clarity of presentation on tensorboard.
     tensor_name = re.sub('%s_[0-9]*/' % TOWER_NAME, '', x.op.name)
-    tf.histogram_summary(tensor_name + '/activations', x)
-    tf.scalar_summary(tensor_name + '/sparsity', tf.nn.zero_fraction(x))
+    tf.summary.histogram(tensor_name + '/activations', x)
+    tf.summary.scalar(tensor_name + '/sparsity', tf.nn.zero_fraction(x))
 
 def _variable_on_cpu(name, shape, initializer):
     """Helper to create a Variable stored on CPU memory.
@@ -67,7 +67,7 @@ def _variable_with_weight_decay(name, shape, wd):
     var = _variable_on_cpu(name, shape,
                            initializer=tf.contrib.layers.xavier_initializer())
     if wd:
-        weight_decay = tf.mul(tf.nn.l2_loss(var), wd, name='weight_loss')
+        weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
         tf.add_to_collection('losses', weight_decay)
     return var
 
@@ -84,11 +84,11 @@ def _conv(name, in_ ,ksize, strides=[1,1,1,1], padding=DEFAULT_PADDING, group=1,
 	else:
             ksize[2] /= group
             kernel = _variable_with_weight_decay('weights', shape=ksize, wd=0.0)
-	    input_groups = tf.split(3, group, in_)
-	    kernel_groups = tf.split(3, group, kernel)
+	    input_groups = tf.split(in_, group, 3)
+	    kernel_groups = tf.split(kernel, group, 3)
 	    output_groups = [convolve(i, k) for i, k in zip(input_groups, kernel_groups)]
 	    # Concatenate the groups
-	    conv = tf.concat(3, output_groups)
+	    conv = tf.concat(output_groups, 3)
 
         biases = _variable_on_cpu('biases', [n_kern], tf.constant_initializer(0.0))
         conv = tf.nn.bias_add(conv, biases)
@@ -198,14 +198,14 @@ def _view_pool(view_features, name):
     vp = tf.expand_dims(view_features[0], 0) # eg. [100] -> [1, 100]
     for v in view_features[1:]:
         v = tf.expand_dims(v, 0)
-        vp = tf.concat(0, [vp, v])
+        vp = tf.concat([vp, v], 0)
     print 'vp before reducing:', vp.get_shape().as_list()
     vp = tf.reduce_max(vp, [0], name=name)
     return vp 
 
 
 def loss(fc8, labels):
-    l = tf.nn.sparse_softmax_cross_entropy_with_logits(fc8, labels)
+    l = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels, logits=fc8)
     l = tf.reduce_mean(l)
     
     tf.add_to_collection('losses', l)
@@ -238,8 +238,8 @@ def _add_loss_summaries(total_loss):
     for l in losses + [total_loss]:
         # Name each loss as '(raw)' and name the moving average version of the loss
         # as the original loss name.
-        tf.scalar_summary(l.op.name +' (raw)', l)
-        tf.scalar_summary(l.op.name, loss_averages.average(l))
+        tf.summary.scalar(l.op.name +' (raw)', l)
+        tf.summary.scalar(l.op.name, loss_averages.average(l))
     return loss_averages_op
     
 
@@ -252,7 +252,7 @@ def train(total_loss, global_step, data_size):
                                     decay_steps,
                                     LEARNING_RATE_DECAY_FACTOR,
                                     staircase=True)
-    tf.scalar_summary('learning_rate', lr)
+    tf.summary.scalar('learning_rate', lr)
     
     loss_averages_op = _add_loss_summaries(total_loss)
 
@@ -266,11 +266,11 @@ def train(total_loss, global_step, data_size):
 
     
     for var in tf.trainable_variables():
-        tf.histogram_summary(var.op.name, var)
+        tf.summary.histogram(var.op.name, var)
 
     for grad,var in grads:
         if grad is not None:
-            tf.histogram_summary(var.op.name + '/gradients', grad)
+            tf.summary.histogram(var.op.name + '/gradients', grad)
 
     variable_averages = tf.train.ExponentialMovingAverage(
             MOVING_AVERAGE_DECAY, global_step)
