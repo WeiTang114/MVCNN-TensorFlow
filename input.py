@@ -2,8 +2,10 @@ import cv2
 import random
 import numpy as np
 import time
-import multiprocessing as mp
+import Queue
+import threading
 import globals as g_
+from concurrent.futures import ThreadPoolExecutor
 
 W = H = 256
 
@@ -105,19 +107,24 @@ class Dataset:
         subtract_mean = self.subtract_mean
         n = len(listfiles)
 
-        def load(listfiles, q):                    
-            for l in listfiles:
-                q.put(self._load_shape(l))
+        def load(listfiles, q, batch_size):
+            n = len(listfiles)
+            with ThreadPoolExecutor(max_workers=16) as pool:
+                for i in range(0, n, batch_size):
+                    sub = listfiles[i: i + batch_size] if i < n-1 else [listfiles[-1]]
+                    shapes = list(pool.map(self._load_shape, sub))
+                    views = np.array([s.views for s in shapes])
+                    labels = [s.label for s in shapes]
+                    q.put((views, labels))
 
             # indicate that I'm done
             q.put(None)
-            q.close()
 
         # This must be larger than twice the batch_size
-        q = mp.Queue(maxsize=g_.INPUT_QUEUE_SIZE)
+        q = Queue.Queue(maxsize=g_.INPUT_QUEUE_SIZE)
 
         # background loading Shapes process
-        p = mp.Process(target=load, args=(listfiles, q))
+        p = threading.Thread(target=load, args=(listfiles, q, batch_size))
         # daemon child is killed when parent exits
         p.daemon = True
         p.start()
@@ -129,18 +136,11 @@ class Dataset:
         for i in xrange(0, n, batch_size):
             starttime = time.time()
             
-            # print 'q size', q.qsize() 
+            item = q.get()
+            if item is None:
+                break
+            x, y = item
 
-            for j in xrange(batch_size):
-                s = q.get()
-
-                # queue is done
-                if s == None: 
-                    break
-                
-                x[j, ...] = s.views
-                y[j] = s.label 
-            
             # print 'load batch time:', time.time()-starttime, 'sec'
             yield x, y
 
