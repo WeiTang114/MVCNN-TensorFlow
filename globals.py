@@ -21,11 +21,11 @@ INPUT_QUEUE_SIZE = 4 * BATCH_SIZE
 """
 constants for training the model
 """
-INIT_LEARNING_RATE = 0.001
+INIT_LEARNING_RATE = 0.0001
 
 # sample how many shapes for validation
 # this affects the validation time
-VAL_SAMPLE_SIZE = 256 
+VAL_SAMPLE_SIZE = 256
 
 # do a validation every VAL_PERIOD iterations
 VAL_PERIOD = 100
