@@ -25,7 +25,7 @@ tf.app.flags.DEFINE_string('train_dir', osp.dirname(sys.argv[0]) + '/tmp/',
                            """and checkpoint.""")
 tf.app.flags.DEFINE_boolean('log_device_placement', False,
                             """Whether to log device placement.""")
-tf.app.flags.DEFINE_string('weights', '', 
+tf.app.flags.DEFINE_string('weights', '',
                             """finetune with a pretrained model""")
 
 np.set_printoptions(precision=3)
@@ -42,7 +42,7 @@ def test(dataset, ckptfile):
     with tf.Graph().as_default():
         startstep = 0
         global_step = tf.Variable(startstep, trainable=False)
-         
+
         view_ = tf.placeholder('float32', shape=(None, V, 227, 227, 3), name='im0')
         y_ = tf.placeholder('int64', shape=(None), name='y')
         keep_prob_ = tf.placeholder('float32')
@@ -52,25 +52,19 @@ def test(dataset, ckptfile):
         train_op = model.train(loss, global_step, data_size)
         prediction = model.classify(fc8)
 
-        # build the summary operation based on the F colection of Summaries
-        summary_op = tf.merge_all_summaries()
-
         saver = tf.train.Saver(tf.all_variables(), max_to_keep=1000)
 
         init_op = tf.initialize_all_variables()
         sess = tf.Session(config=tf.ConfigProto(log_device_placement=FLAGS.log_device_placement))
-        
+
         saver.restore(sess, ckptfile)
         print 'restore variables done'
 
-        summary_writer = tf.train.SummaryWriter(FLAGS.train_dir,
-                                                graph=sess.graph) 
-
         step = startstep
-            
+
         predictions = []
         labels = []
-    
+
         print "Start testing"
         print "Size:", data_size
         print "It'll take", int(math.ceil(data_size/batch_size)), "iterations."
@@ -86,7 +80,7 @@ def test(dataset, ckptfile):
             pred, loss_value = sess.run(
                     [prediction,  loss,],
                     feed_dict=feed_dict)
-        
+
 
             duration = time.time() - start_time
 
@@ -108,7 +102,7 @@ def test(dataset, ckptfile):
 
 
 def main(argv):
-    st = time.time() 
+    st = time.time()
     print 'start loading data'
 
     listfiles, labels = read_lists(g_.TEST_LOL)
