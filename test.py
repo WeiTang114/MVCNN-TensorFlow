@@ -54,7 +54,7 @@ def test(dataset, ckptfile):
 
         saver = tf.train.Saver(tf.all_variables(), max_to_keep=1000)
 
-        init_op = tf.initialize_all_variables()
+        init_op = tf.global_variables_initializer()
         sess = tf.Session(config=tf.ConfigProto(log_device_placement=FLAGS.log_device_placement))
 
         saver.restore(sess, ckptfile)
