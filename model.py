@@ -65,7 +65,7 @@ def _variable_with_weight_decay(name, shape, wd):
       Variable Tensor
     """
     var = _variable_on_cpu(name, shape,
-                           initializer=tf.contrib.layers.xavier_initializer())
+                           initializer=tf.contrib.layers.xavier_initializer(uniform=False))
     if wd:
         weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
         tf.add_to_collection('losses', weight_decay)
