@@ -55,3 +55,5 @@ $ python train.py --train_dir=`pwd`/tmp --weights=`pwd`/tmp/model.ckpt-N --learn
 $ python test.py --weights=`pwd`/tmp/model.ckpt-N
 ```
 
+# License
+MIT
