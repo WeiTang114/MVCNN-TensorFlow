@@ -60,18 +60,18 @@ def train(dataset_train, dataset_val, ckptfile='', caffemodel=''):
         prediction = model.classify(fc8)
 
         # build the summary operation based on the F colection of Summaries
-        summary_op = tf.merge_all_summaries()
+        summary_op = tf.summary.merge_all()
 
 
         # must be after merge_all_summaries
         validation_loss = tf.placeholder('float32', shape=(), name='validation_loss')
-        validation_summary = tf.scalar_summary('validation_loss', validation_loss)
+        validation_summary = tf.summary.scalar('validation_loss', validation_loss)
         validation_acc = tf.placeholder('float32', shape=(), name='validation_accuracy')
-        validation_acc_summary = tf.scalar_summary('validation_accuracy', validation_acc)
+        validation_acc_summary = tf.summary.scalar('validation_accuracy', validation_acc)
 
         saver = tf.train.Saver(tf.all_variables(), max_to_keep=1000)
 
-        init_op = tf.initialize_all_variables()
+        init_op = tf.global_variables_initializer()
         sess = tf.Session(config=tf.ConfigProto(log_device_placement=FLAGS.log_device_placement))
         
         if is_finetune:
@@ -88,16 +88,15 @@ def train(dataset_train, dataset_val, ckptfile='', caffemodel=''):
             sess.run(init_op)
             print 'init_op done'
 
-        summary_writer = tf.train.SummaryWriter(FLAGS.train_dir,
-                                                graph=sess.graph) 
+        summary_writer = tf.summary.FileWriter(FLAGS.train_dir,
+                                               graph=sess.graph) 
 
         step = startstep
-        for epoch in xrange(20):
+        for epoch in xrange(100):
             print 'epoch:', epoch
 
             for batch_x, batch_y in dataset_train.batches(batch_size):
                 step += 1
-                print step
 
                 start_time = time.time()
                 feed_dict = {view_: batch_x,
@@ -113,7 +112,7 @@ def train(dataset_train, dataset_val, ckptfile='', caffemodel=''):
                 assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
 
                 # print training information
-                if step % 10 == 0:
+                if step % 10 == 0 or step - startstep <= 30:
                     sec_per_batch = float(duration)
                     print '%s: step %d, loss=%.2f (%.1f examples/sec; %.3f sec/batch)' \
                          % (datetime.now(), step, loss_value,
@@ -162,7 +161,6 @@ def train(dataset_train, dataset_val, ckptfile='', caffemodel=''):
                     checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
                     saver.save(sess, checkpoint_path, global_step=step)
 
-                print 'enditer'
 
 
 def main(argv):

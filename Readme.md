@@ -38,14 +38,14 @@ To train at the first time, run
 
 ```
 $ mkdir tmp
-$ python train.py --train_dir=`pwd`/tmp --caffemodel=`pwd`/alexnet_imagenet.npy --learning-rate=0.001
+$ python train.py --train_dir=`pwd`/tmp --caffemodel=`pwd`/alexnet_imagenet.npy --learning_rate=0.0001
 ```
 
 To fine-tune, run
 
 ```
 # N is your checkpoint iteration
-$ python train.py --train_dir=`pwd`/tmp --weights=`pwd`/tmp/model.ckpt-N --learning-rate=0.001
+$ python train.py --train_dir=`pwd`/tmp --weights=`pwd`/tmp/model.ckpt-N --learning_rate=0.0001
 ```
 
 ## Testing

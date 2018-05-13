@@ -2,8 +2,10 @@ import cv2
 import random
 import numpy as np
 import time
-import multiprocessing as mp
+import Queue
+import threading
 import globals as g_
+from concurrent.futures import ThreadPoolExecutor
 
 W = H = 256
 
@@ -13,10 +15,10 @@ class Shape:
             self.label = int(f.readline())
             self.V = int(f.readline())
             view_files = [l.strip() for l in f.readlines()]
-        
+
         self.views = self._load_views(view_files, self.V)
         self.done_mean = False
-        
+
 
     def _load_views(self, view_files, V):
         views = []
@@ -29,15 +31,15 @@ class Shape:
             views.append(im)
         views = np.asarray(views)
         return views
-    
+
     def subtract_mean(self):
         if not self.done_mean:
             mean_bgr = (104., 116., 122.)
             for i in range(3):
                 self.views[:,:,:,i] -= mean_bgr[i]
-            
+
             self.done_mean = True
-    
+
     def crop_center(self, size=(227,227)):
         w, h = self.views.shape[1], self.views.shape[2]
         wn, hn = size
@@ -46,8 +48,8 @@ class Shape:
         right = left + wn
         bottom = top + hn
         self.views = self.views[:, left:right, top:bottom, :]
-    
-    
+
+
 class Dataset:
     def __init__(self, listfiles, labels, subtract_mean, V):
         self.listfiles = listfiles
@@ -57,7 +59,7 @@ class Dataset:
         self.V = V
         print 'dataset inited'
         print '  total size:', len(listfiles)
-    
+
     def shuffle(self):
         z = zip(self.listfiles, self.labels)
         random.shuffle(z)
@@ -68,7 +70,7 @@ class Dataset:
     def batches(self, batch_size):
         for x,y in self._batches_fast(self.listfiles, batch_size):
             yield x,y
-        
+
     def sample_batches(self, batch_size, n):
         listfiles = random.sample(self.listfiles, n)
         for x,y in self._batches_fast(listfiles, batch_size):
@@ -80,9 +82,9 @@ class Dataset:
             starttime = time.time()
 
             lists = listfiles[i : i+batch_size]
-            x = np.zeros((batch_size, self.V, 227, 227, 3)) 
+            x = np.zeros((batch_size, self.V, 227, 227, 3))
             y = np.zeros(batch_size)
-            
+
             for j,l in enumerate(lists):
                 s = Shape(l)
                 s.crop_center()
@@ -90,57 +92,55 @@ class Dataset:
                     s.subtract_mean()
                 x[j, ...] = s.views
                 y[j] = s.label
-            
+
             print 'load batch time:', time.time()-starttime, 'sec'
             yield x, y
-    
+
     def _load_shape(self, listfile):
         s = Shape(listfile)
         s.crop_center()
         if self.subtract_mean:
             s.subtract_mean()
-        return s 
+        return s
 
     def _batches_fast(self, listfiles, batch_size):
         subtract_mean = self.subtract_mean
         n = len(listfiles)
 
-        def load(listfiles, q):                    
-            for l in listfiles:
-                q.put(self._load_shape(l))
+        def load(listfiles, q, batch_size):
+            n = len(listfiles)
+            with ThreadPoolExecutor(max_workers=16) as pool:
+                for i in range(0, n, batch_size):
+                    sub = listfiles[i: i + batch_size] if i < n-1 else [listfiles[-1]]
+                    shapes = list(pool.map(self._load_shape, sub))
+                    views = np.array([s.views for s in shapes])
+                    labels = np.array([s.label for s in shapes])
+                    q.put((views, labels))
 
             # indicate that I'm done
             q.put(None)
-            q.close()
 
         # This must be larger than twice the batch_size
-        q = mp.Queue(maxsize=g_.INPUT_QUEUE_SIZE)
+        q = Queue.Queue(maxsize=g_.INPUT_QUEUE_SIZE)
 
         # background loading Shapes process
-        p = mp.Process(target=load, args=(listfiles, q))
+        p = threading.Thread(target=load, args=(listfiles, q, batch_size))
         # daemon child is killed when parent exits
         p.daemon = True
         p.start()
 
 
-        x = np.zeros((batch_size, self.V, 227, 227, 3)) 
+        x = np.zeros((batch_size, self.V, 227, 227, 3))
         y = np.zeros(batch_size)
 
         for i in xrange(0, n, batch_size):
             starttime = time.time()
-            
-            # print 'q size', q.qsize() 
 
-            for j in xrange(batch_size):
-                s = q.get()
+            item = q.get()
+            if item is None:
+                break
+            x, y = item
 
-                # queue is done
-                if s == None: 
-                    break
-                
-                x[j, ...] = s.views
-                y[j] = s.label 
-            
             # print 'load batch time:', time.time()-starttime, 'sec'
             yield x, y
 

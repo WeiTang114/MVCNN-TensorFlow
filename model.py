@@ -17,17 +17,11 @@ tf.app.flags.DEFINE_float('learning_rate', g_.INIT_LEARNING_RATE,
 MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
 NUM_EPOCHS_PER_DECAY = 350.0      # Epochs after which learning rate decays.
 LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
+WEIGHT_DECAY_FACTOR = 0.004 / 5. # 3500 -> 2.8
 
 TOWER_NAME = 'tower'
 DEFAULT_PADDING = 'SAME'
 
-def weight_variable(shape):
-    initial = tf.truncated_normal(shape, stddev=0.1)
-    return tf.Variable(initial)
-
-def bias_variable(shape):
-    initial = tf.constant(0.1, shape=shape)
-    return tf.Variable(initial)
 
 def _activation_summary(x):
     """Helper to create summaries for activations.
@@ -41,8 +35,8 @@ def _activation_summary(x):
     # Remove 'tower_[0-9]/' from the name in case this is a multi-GPU training
     # session. This helps the clarity of presentation on tensorboard.
     tensor_name = re.sub('%s_[0-9]*/' % TOWER_NAME, '', x.op.name)
-    tf.histogram_summary(tensor_name + '/activations', x)
-    tf.scalar_summary(tensor_name + '/sparsity', tf.nn.zero_fraction(x))
+    tf.summary.histogram(tensor_name + '/activations', x)
+    tf.summary.scalar(tensor_name + '/sparsity', tf.nn.zero_fraction(x))
 
 def _variable_on_cpu(name, shape, initializer):
     """Helper to create a Variable stored on CPU memory.
@@ -58,40 +52,47 @@ def _variable_on_cpu(name, shape, initializer):
     return var
 
 
-def _variable_with_weight_decay(name, shape, stddev, wd):
+def _variable_with_weight_decay(name, shape, wd):
     """Helper to create an initialized Variable with weight decay.
     Note that the Variable is initialized with a truncated normal distribution.
     A weight decay is added only if one is specified.
     Args:
       name: name of the variable
       shape: list of ints
-      stddev: standard deviation of a truncated Gaussian
       wd: add L2Loss weight decay multiplied by this float. If None, weight
           decay is not added for this Variable.
     Returns:
       Variable Tensor
     """
     var = _variable_on_cpu(name, shape,
-                           tf.truncated_normal_initializer(stddev=stddev))
+                           initializer=tf.contrib.layers.xavier_initializer())
     if wd:
-        weight_decay = tf.mul(tf.nn.l2_loss(var), wd, name='weight_loss')
+        weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
         tf.add_to_collection('losses', weight_decay)
     return var
 
 
-
-
-def _conv(name, in_, ksize, strides=[1,1,1,1], padding=DEFAULT_PADDING, reuse=False):
+def _conv(name, in_ ,ksize, strides=[1,1,1,1], padding=DEFAULT_PADDING, group=1, reuse=False):
     
     n_kern = ksize[3]
+    convolve = lambda i, k: tf.nn.conv2d(i, k, strides, padding=padding)
 
     with tf.variable_scope(name, reuse=reuse) as scope:
-        stddev = 1 / np.prod(ksize[:3], dtype=float) ** 0.5
-        kernel = _variable_with_weight_decay('weights', shape=ksize, stddev=stddev, wd=0.0)
-        conv = tf.nn.conv2d(in_, kernel, strides, padding=padding)
+        if group == 1:
+            kernel = _variable_with_weight_decay('weights', shape=ksize, wd=0.0)
+            conv = convolve(in_, kernel)
+	else:
+            ksize[2] /= group
+            kernel = _variable_with_weight_decay('weights', shape=ksize, wd=0.0)
+	    input_groups = tf.split(in_, group, 3)
+	    kernel_groups = tf.split(kernel, group, 3)
+	    output_groups = [convolve(i, k) for i, k in zip(input_groups, kernel_groups)]
+	    # Concatenate the groups
+	    conv = tf.concat(output_groups, 3)
+
         biases = _variable_on_cpu('biases', [n_kern], tf.constant_initializer(0.0))
-        bias = tf.nn.bias_add(conv, biases)
-        conv = tf.nn.relu(bias, name=scope.name)
+        conv = tf.nn.bias_add(conv, biases)
+        conv = tf.nn.relu(conv, name=scope.name)
         _activation_summary(conv)
 
     print name, conv.get_shape().as_list()
@@ -109,9 +110,7 @@ def _fc(name, in_, outsize, dropout=1.0, reuse=False):
         # Move everything into depth so we can perform a single matrix multiply.
         
         insize = in_.get_shape().as_list()[-1]
-        stddev = 1 / float(insize) ** 0.5
-        weights = _variable_with_weight_decay('weights', shape=[insize, outsize],
-                                              stddev=stddev, wd=0.004)
+        weights = _variable_with_weight_decay('weights', shape=[insize, outsize], wd=0.004)
         biases = _variable_on_cpu('biases', [outsize], tf.constant_initializer(0.0))
         fc = tf.nn.relu(tf.matmul(in_, weights) + biases, name=scope.name)
         fc = tf.nn.dropout(fc, dropout)
@@ -144,13 +143,13 @@ def inference_multiview(views, n_classes, keep_prob):
         lrn1 = None
         pool1 = _maxpool('pool1', conv1, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='VALID')
 
-        conv2 = _conv('conv2', pool1, [5, 5, 96, 256], reuse=reuse)
+        conv2 = _conv('conv2', pool1, [5, 5, 96, 256], group=2, reuse=reuse)
         lrn2 = None
         pool2 = _maxpool('pool2', conv2, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='VALID')
         
         conv3 = _conv('conv3', pool2, [3, 3, 256, 384], reuse=reuse)
-        conv4 = _conv('conv4', conv3, [3, 3, 384, 384], reuse=reuse)
-        conv5 = _conv('conv5', conv4, [3, 3, 384, 256], reuse=reuse)
+        conv4 = _conv('conv4', conv3, [3, 3, 384, 384], group=2, reuse=reuse)
+        conv5 = _conv('conv5', conv4, [3, 3, 384, 256], group=2, reuse=reuse)
 
         pool5 = _maxpool('pool5', conv5, ksize=[1, 3, 3, 1], strides=[1, 2, 2, 1], padding='VALID')
         
@@ -174,46 +173,39 @@ def inference_multiview(views, n_classes, keep_prob):
 def load_alexnet_to_mvcnn(sess, caffetf_modelpath):
     """ caffemodel: np.array, """
 
-    def load(name, layer_data, group=1):
-        w, b = layer_data
-
-        if group != 1:
-            w = np.concatenate((w, w), axis=2) 
-
-        with tf.variable_scope(name, reuse=True):
-            for subkey, data in zip(('weights', 'biases'), (w, b)):
-                print 'loading ', name, subkey
-                var = tf.get_variable(subkey)
-                sess.run(var.assign(data))
-
     caffemodel = np.load(caffetf_modelpath)
     data_dict = caffemodel.item()
-    for l in ['conv1', 'conv2', 'conv3', 'conv4', 'conv5']:
+    for l in ['conv1', 'conv2', 'conv3', 'conv4', 'conv5', 'fc6', 'fc7']:
         name = l
-
-        # historical grouping by alexnet
-        if l == 'conv2' or l == 'conv4' or l == 'conv5':
-            load(name, data_dict[l], group=2)
-        else:
-            load(name, data_dict[l])
-
+        _load_param(sess, name, data_dict[l])
     
-    for l in ['fc6', 'fc7']:
-        load(l, data_dict[l])
-    
+
+def _load_param(sess, name, layer_data):
+    w, b = layer_data
+
+    with tf.variable_scope(name, reuse=True):
+        for subkey, data in zip(('weights', 'biases'), (w, b)):
+            print 'loading ', name, subkey
+
+            try:
+                var = tf.get_variable(subkey)
+                sess.run(var.assign(data))
+            except ValueError as e: 
+                print 'varirable loading failed:', subkey, '(%s)' % str(e)
+
 
 def _view_pool(view_features, name):
     vp = tf.expand_dims(view_features[0], 0) # eg. [100] -> [1, 100]
     for v in view_features[1:]:
         v = tf.expand_dims(v, 0)
-        vp = tf.concat(0, [vp, v])
+        vp = tf.concat([vp, v], 0)
     print 'vp before reducing:', vp.get_shape().as_list()
     vp = tf.reduce_max(vp, [0], name=name)
     return vp 
 
 
 def loss(fc8, labels):
-    l = tf.nn.sparse_softmax_cross_entropy_with_logits(fc8, labels)
+    l = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels, logits=fc8)
     l = tf.reduce_mean(l)
     
     tf.add_to_collection('losses', l)
@@ -246,8 +238,8 @@ def _add_loss_summaries(total_loss):
     for l in losses + [total_loss]:
         # Name each loss as '(raw)' and name the moving average version of the loss
         # as the original loss name.
-        tf.scalar_summary(l.op.name +' (raw)', l)
-        tf.scalar_summary(l.op.name, loss_averages.average(l))
+        tf.summary.scalar(l.op.name +' (raw)', l)
+        tf.summary.scalar(l.op.name, loss_averages.average(l))
     return loss_averages_op
     
 
@@ -260,12 +252,12 @@ def train(total_loss, global_step, data_size):
                                     decay_steps,
                                     LEARNING_RATE_DECAY_FACTOR,
                                     staircase=True)
-    tf.scalar_summary('learning_rate', lr)
+    tf.summary.scalar('learning_rate', lr)
     
     loss_averages_op = _add_loss_summaries(total_loss)
 
     with tf.control_dependencies([loss_averages_op]):
-        opt = tf.train.GradientDescentOptimizer(lr)
+        opt = tf.train.AdamOptimizer(lr)
         grads = opt.compute_gradients(total_loss)
 
     
@@ -274,11 +266,11 @@ def train(total_loss, global_step, data_size):
 
     
     for var in tf.trainable_variables():
-        tf.histogram_summary(var.op.name, var)
+        tf.summary.histogram(var.op.name, var)
 
     for grad,var in grads:
         if grad is not None:
-            tf.histogram_summary(var.op.name + '/gradients', grad)
+            tf.summary.histogram(var.op.name + '/gradients', grad)
 
     variable_averages = tf.train.ExponentialMovingAverage(
             MOVING_AVERAGE_DECAY, global_step)
