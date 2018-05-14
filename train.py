@@ -72,7 +72,7 @@ def train(dataset_train, dataset_val, ckptfile='', caffemodel=''):
         saver = tf.train.Saver(tf.all_variables(), max_to_keep=1000)
 
         init_op = tf.global_variables_initializer()
-        sess = tf.Session(config=tf.ConfigProto(log_device_placement=FLAGS.log_device_placement))
+        sess = tf.Session(config=tf.ConfigProto(log_device_placement=FLAGS.log_device_placement, gpu_options=tf.GPUOptions(allow_growth=True)))
         
         if is_finetune:
             # load checkpoint file
